@@ -95,8 +95,10 @@ class ConvNetwork:
         self.f2.zero_grad()
 
     # function for thresholding from sigmoid to predicted class
-    def predict(self,input_in):
-        predictions = self.forward(input_in).value
+    def predict(self,X):
+        # turn x into tensor
+        X_valid_tensor = Tensor(X.reshape((-1,3,100,100)))
+        predictions = self.forward(X_valid_tensor).value
         greater_than_threshold = predictions > 0.5
         less_than_threshold = predictions <= 0.5
         predictions[greater_than_threshold] = 1
@@ -117,13 +119,8 @@ class ConvNetwork:
         :param y: Validation set targets.
         :return: Accuracy of model.
         """
-        # turn x into tensor
-        X_valid_tensor = Tensor(X.reshape((-1,3,100,100)))
-
-        # # get predictions
-        # valid_predictions = self.forward(X_valid_tensor)
         # make a one hot vector from the indices
-        valid_one_hot = self.predict(X_valid_tensor)
+        valid_one_hot = self.predict(X)
 
         # count incorrect predictions by subtracting, squaring, summing predictions and counting non-zeros
         num_incorrect = np.count_nonzero(np.sum(np.square(valid_one_hot - y),axis=1))
