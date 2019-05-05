@@ -8,12 +8,14 @@ import copy
 import pickle
 import gzip
 from conv_functions import *
-from math import ceil,sqrt
+from math import ceil,sqrt,inf
 from sklearn.utils import shuffle
 import matplotlib.image as mpimg
 from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
 import random
+from sklearn.cluster import KMeans
+
 
 class Dataset:
     def __init__(self):
@@ -27,8 +29,8 @@ class Dataset:
         # print (X_valid.shape)
 
     def get_random_example(self,random_state=0):
-        random.seed(random_state)
-        return self.X[random.randint(0,len(X)-1)]
+        # random.seed(random_state)
+        return self.X[random.randint(0,len(self.X)-1)]
 
 class ConvNetwork:
     def __init__(self,k1=None,k2=None,f1=None,f2=None):
@@ -38,22 +40,22 @@ class ConvNetwork:
         Layer weight initializations to random normal kaiming initialization
         unless layer values specified
         """
-        if (k1 == None):
+        if (k1 is None):
             self.k1 = Tensor(np.random.randn(3,3,12,12) * (sqrt(2./10000.)))
         else:
             self.k1 = Tensor(k1)
 
-        if (k2 == None):
+        if (k2 is None):
             self.k2 = Tensor(np.random.randn(3,3,6,6) * (sqrt(2./7921.)))
         else:
             self.k2 = Tensor(k2)
 
-        if (f1 == None):
+        if (f1 is None):
             self.f1 = Tensor(np.random.randn(21168,100) * (sqrt(2./21168.)))
         else:
             self.f1 = Tensor(f1)
 
-        if (f2 == None):
+        if (f2 is None):
             self.f2 = Tensor(np.random.randn(100,1)   * (sqrt(2./100.)))
         else:
             self.f2 = Tensor(f2)
@@ -189,14 +191,40 @@ class ConvNetwork:
 
         return loss, validation_accuracy
 
-    @staticmethod
-    @jit(nopython=True)
-    def shap_pixel_helper(example,dataset,num_iterations):
+    # @staticmethod
+    # @jit(nopython=True)
+    # def shap_pixel_helper(example,dataset,num_iterations):
+    #     height = example.shape[0]
+    #     width = example.shape[1]
+    #     channels = example.shape[2]
+    #     shap_map = np.zeros((height,width,1))
+    #     for iteration in range(num_iterations):
+    #         Z = dataset.get_random_example()
+    #         # i: height, j:width, assuming shape is (height,width,channel)
+    #         for i in range(height):
+    #             for j in range(width):
+    #                 mask = np.random.rand(height,width,1)
+    #                 mask = np.tile(mask,3)
+    #                 feature_permutation = np.zeros((height,width,channels))
+    #                 feature_permutation[mask > 0.5] = Z[mask > 0.5]
+    #                 feature_permutation[mask <= 0.5] = example[mask <= 0.5]
+    #                 # with feature i,j from example
+    #                 feature_permutation[i][j] = example[i][j]
+    #                 phi_x = self.forward(feature_permutation)
+    #                 # without feature i,j (feature comes from Z)
+    #                 feature_permutation[i][j] = Z[i][j]
+    #                 phi_z = self.forward(feature_permutation)
+    #                 shap_map[i][j] += phi_x - phi_z
+    #
+    #     return shap_map/num_iterations
+
+    def shap_pixel(self,example,dataset,num_iterations=10):
         height = example.shape[0]
         width = example.shape[1]
         channels = example.shape[2]
         shap_map = np.zeros((height,width,1))
         for iteration in range(num_iterations):
+            print (iteration)
             Z = dataset.get_random_example()
             # i: height, j:width, assuming shape is (height,width,channel)
             for i in range(height):
@@ -208,13 +236,63 @@ class ConvNetwork:
                     feature_permutation[mask <= 0.5] = example[mask <= 0.5]
                     # with feature i,j from example
                     feature_permutation[i][j] = example[i][j]
-                    phi_x = self.forward(feature_permutation)
+                    phi_x = self.forward(Tensor(feature_permutation.reshape((-1,3,100,100)))).value
                     # without feature i,j (feature comes from Z)
                     feature_permutation[i][j] = Z[i][j]
-                    phi_z = self.forward(feature_permutation)
-                    shap_map[i][j] += phi_x - phi_z
+                    phi_z = self.forward(Tensor(feature_permutation.reshape((-1,3,100,100)))).value
+                    shap_map[i][j] += np.asscalar(phi_x) - np.asscalar(phi_z)
+                    # print (shap_map[i][j])
+                    # print (np.sum(example[i][j]-Z[i][j]))
 
         return shap_map/num_iterations
 
-    def shap_pixel(self,example,dataset,num_iterations=10):
-        return shap_pixel_helper(example,dataset,num_iterations)
+    def kmean_image(self,image,num_clusters):
+        model = KMeans(n_clusters=num_clusters, random_state=0)
+        test_image = np.array(image.reshape((image.shape[0]*image.shape[1],-1)))
+        cluster_map = np.zeros((image.shape[0]*image.shape[1]))
+        model.fit(test_image)
+        for i,pixel in enumerate(test_image):
+            minimum_distance = inf
+            closest_cluster = None
+            closest_cluster_index = None
+            for c,cluster in enumerate(model.cluster_centers_):
+                if (np.sqrt(np.sum(np.square(cluster-pixel))) < minimum_distance):
+                    minimum_distance = np.sqrt(np.sum(np.square(cluster-pixel)))
+                    closest_cluster = cluster
+                    closest_cluster_index = c
+            test_image[i] = np.round(closest_cluster)
+            cluster_map[i] = closest_cluster_index
+        return cluster_map.reshape(image.shape[0:2])
+
+    def shap_cluster(self,example,dataset,num_iterations=10,num_clusters=3):
+        height = example.shape[0]
+        width = example.shape[1]
+        channels = example.shape[2]
+        shap_map = np.zeros((height,width,1))
+        for iteration in range(num_iterations):
+            print (iteration)
+            Z = dataset.get_random_example()
+            # i: height, j:width, assuming shape is (height,width,channel)
+            for cluster_of_interest in range(num_clusters):
+                    example_clustered = np.tile(self.kmean_image(example,num_clusters).reshape(height,width,1),3)
+
+                    a = random.randint(0,2**num_clusters-1)
+                    mask = "0" * (num_clusters - len(bin(a)[2:])) + bin(a)[2:]
+                    feature_permutation = np.zeros((height,width,channels))
+                    mask = "110"
+                    for c in range(num_clusters):
+                        if (mask[c] == "1"):
+                            feature_permutation[example_clustered == c] = Z[example_clustered == c]
+                        else:
+                            feature_permutation[example_clustered == c] = example[example_clustered == c]
+
+                    feature_permutation[example_clustered == cluster_of_interest] = example[example_clustered == cluster_of_interest]
+                    phi_x = self.forward(Tensor(feature_permutation.reshape((-1,3,100,100)))).value
+                    # without feature i,j (feature comes from Z)
+                    feature_permutation[example_clustered == cluster_of_interest] = Z[example_clustered == cluster_of_interest]
+                    phi_z = self.forward(Tensor(feature_permutation.reshape((-1,3,100,100)))).value
+                    shap_map[(example_clustered == cluster_of_interest)[:,:,0]] += np.asscalar(phi_x) - np.asscalar(phi_z)
+                    # print (shap_map[i][j])
+                    # print (np.sum(example[i][j]-Z[i][j]))
+
+        return shap_map/num_iterations
