@@ -214,19 +214,19 @@ class ConvNetwork:
     #
     #     return shap_map/num_iterations
 
-    def shap_pixel(self,example,dataset,num_iterations=10):
+    def shap_pixel(self,example,label,dataset,num_iterations=10):
+        example = example.reshape((21,21,1))
         height = example.shape[0]
         width = example.shape[1]
         channels = example.shape[2]
         shap_map = np.zeros((height,width,1))
         for iteration in range(num_iterations):
             print (iteration)
-            Z = dataset.get_random_example()
+            Z = dataset.get_random_example().reshape((21,21,1))
             # i: height, j:width, assuming shape is (height,width,channel)
             for i in range(height):
                 for j in range(width):
                     mask = np.random.rand(height,width,1)
-                    mask = np.tile(mask,3)
                     feature_permutation = np.zeros((height,width,channels))
                     feature_permutation[mask > 0.5] = Z[mask > 0.5]
                     feature_permutation[mask <= 0.5] = example[mask <= 0.5]
@@ -236,7 +236,7 @@ class ConvNetwork:
                     # without feature i,j (feature comes from Z)
                     feature_permutation[i][j] = Z[i][j]
                     phi_z = self.forward(Tensor(feature_permutation.reshape((-1,1,21,21)))).value
-                    shap_map[i][j] += np.asscalar(phi_x) - np.asscalar(phi_z)
+                    shap_map[i][j] += np.sum(np.multiply(phi_x,label)) - np.sum(np.multiply(phi_z,label))
                     # print (shap_map[i][j])
                     # print (np.sum(example[i][j]-Z[i][j]))
 
@@ -260,22 +260,22 @@ class ConvNetwork:
             cluster_map[i] = closest_cluster_index
         return cluster_map.reshape(image.shape[0:2])
 
-    def shap_cluster(self,example,dataset,num_iterations=10,num_clusters=3):
+    def shap_cluster(self,example,label,dataset,num_iterations=10,num_clusters=3):
+        example = example.reshape((21,21,1))
         height = example.shape[0]
         width = example.shape[1]
         channels = example.shape[2]
         shap_map = np.zeros((height,width,1))
         for iteration in range(num_iterations):
             print (iteration)
-            Z = dataset.get_random_example()
+            Z = dataset.get_random_example().reshape((21,21,1))
             # i: height, j:width, assuming shape is (height,width,channel)
             for cluster_of_interest in range(num_clusters):
-                    example_clustered = np.tile(self.kmean_image(example,num_clusters).reshape(height,width,1),3)
+                    example_clustered = self.kmean_image(example,num_clusters).reshape(height,width,1)
 
                     a = random.randint(0,2**num_clusters-1)
                     mask = "0" * (num_clusters - len(bin(a)[2:])) + bin(a)[2:]
                     feature_permutation = np.zeros((height,width,channels))
-                    mask = "110"
                     for c in range(num_clusters):
                         if (mask[c] == "1"):
                             feature_permutation[example_clustered == c] = Z[example_clustered == c]
@@ -287,7 +287,7 @@ class ConvNetwork:
                     # without feature i,j (feature comes from Z)
                     feature_permutation[example_clustered == cluster_of_interest] = Z[example_clustered == cluster_of_interest]
                     phi_z = self.forward(Tensor(feature_permutation.reshape((-1,1,21,21)))).value
-                    shap_map[(example_clustered == cluster_of_interest)[:,:,0]] += np.asscalar(phi_x) - np.asscalar(phi_z)
+                    shap_map[(example_clustered == cluster_of_interest)[:,:,0]] += np.sum(np.multiply(phi_x,label)) - np.sum(np.multiply(phi_z,label))
                     # print (shap_map[i][j])
                     # print (np.sum(example[i][j]-Z[i][j]))
 
