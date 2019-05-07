@@ -220,6 +220,13 @@ class ConvNetwork:
 
         return loss, validation_accuracy
 
+    def normalize_shap(self,image):
+        if (np.max(image) != 0 and np.min(image) != 0):
+            image[image < 0] = (image[image < 0] - np.min(image[image < 0]))/(np.max(image[image < 0])-np.min(image[image < 0])) - 1
+            image[image > 0] = (image[image > 0] - np.min(image[image > 0]))/(np.max(image[image > 0])-np.min(image[image > 0]))
+
+        return image
+
     def shap_pixel(self,example,label,dataset,num_iterations=10):
         """
         Approximate Shapley values for each individual pixel.
@@ -242,7 +249,6 @@ class ConvNetwork:
         shap_map = np.zeros((height,width,1))
 
         for iteration in range(num_iterations):
-            print ("Iteration: ",iteration)
             Z = dataset.get_random_example().reshape((height,width,channels))
 
             # i: height, j:width, assuming shape is (height,width,channel)
@@ -274,7 +280,7 @@ class ConvNetwork:
                         else:
                             shap_map[i][j] += np.asscalar(phi_z) - np.asscalar(phi_x)
 
-        return shap_map/num_iterations
+        return (self.normalize_shap(shap_map/num_iterations))
 
     def kmean_image(self,image,num_clusters):
         """
@@ -329,13 +335,14 @@ class ConvNetwork:
         width = example.shape[1]
         channels = example.shape[2]
         shap_map = np.zeros((height,width,1))
+        example_clustered = self.kmean_image(example,num_clusters).reshape(height,width,1)
+        if (self.dataset_choice=="catsdogs"):
+            example_clustered = np.tile(example_clustered,3)
         for iteration in range(num_iterations):
-            print ("Iteration ",iteration)
             Z = dataset.get_random_example().reshape((height,width,channels))
 
             # i: height, j:width, assuming shape is (height,width,channel)
             for cluster_of_interest in range(num_clusters):
-                    example_clustered = self.kmean_image(example,num_clusters).reshape(height,width,1)
                     a = random.randint(0,2**num_clusters-1)
                     mask = "0" * (num_clusters - len(bin(a)[2:])) + bin(a)[2:]
                     feature_permutation = np.zeros((height,width,channels))
@@ -359,4 +366,73 @@ class ConvNetwork:
                         else:
                             shap_map[(example_clustered == cluster_of_interest)[:,:,0]] += np.asscalar(phi_z) - np.asscalar(phi_x)
 
-        return shap_map/num_iterations
+        return self.normalize_shap(shap_map/num_iterations)
+
+    def grid_image(self,image,height,width):
+        grid_height = ceil(height/10)
+        grid_width = ceil(width/10)
+
+        grid_map = np.zeros((height,width))
+        superpixel = 0
+        for i in range(10):
+            for j in range(10):
+                grid_map[i*grid_height:(i+1)*grid_height,j*grid_width:(j+1)*grid_width] = superpixel
+                superpixel+=1
+
+        return grid_map,superpixel
+
+    def shap_superpixel(self,example,label,dataset,num_iterations=10):
+        """
+        Approximate Shapley values for each cluster in a clustered image.
+        :param exmaple: image we want Shapley values for.
+        :param label: class label of image.
+        :param dataset: dataset object with rest of training examples.
+        :param num_iterations: number of iterations used to approximate Shapley value.
+        :param num_clusters: number of clusters to segment image into.
+        :return: shap map with the same height and width as example image, but only
+                one channel containing the shapley value for the cluster that the
+                corresponding pixel is a part of.
+        """
+
+        if (self.dataset_choice=="mnist"):
+            example = example.reshape((21,21,1))
+        else:
+            example = example.reshape((100,100,3))
+
+        height = example.shape[0]
+        width = example.shape[1]
+        channels = example.shape[2]
+        shap_map = np.zeros((height,width,1))
+        example_clustered,superpixels = self.grid_image(example,height,width)
+        example_clustered = example_clustered.reshape(height,width,1)
+        if (self.dataset_choice=="catsdogs"):
+            example_clustered = np.tile(example_clustered,3)
+        for iteration in range(num_iterations):
+            Z = dataset.get_random_example().reshape((height,width,channels))
+
+            # i: height, j:width, assuming shape is (height,width,channel)
+            for cluster_of_interest in range(superpixels):
+                    a = random.randint(0,2**superpixels-1)
+                    mask = "0" * (superpixels - len(bin(a)[2:])) + bin(a)[2:]
+                    feature_permutation = np.zeros((height,width,channels))
+
+                    for c in range(superpixels):
+                        if (mask[c] == "1"):
+                            feature_permutation[example_clustered == c] = Z[example_clustered == c]
+                        else:
+                            feature_permutation[example_clustered == c] = example[example_clustered == c]
+
+                    feature_permutation[example_clustered == cluster_of_interest] = example[example_clustered == cluster_of_interest]
+                    phi_x = self.forward(Tensor(feature_permutation.reshape((1,channels,height,width)))).value
+                    # without feature i,j (feature comes from Z)
+                    feature_permutation[example_clustered == cluster_of_interest] = Z[example_clustered == cluster_of_interest]
+                    phi_z = self.forward(Tensor(feature_permutation.reshape((-1,channels,height,width)))).value
+                    if (self.dataset_choice=="mnist"):
+                        shap_map[(example_clustered == cluster_of_interest)[:,:,0]] += np.sum(np.multiply(phi_x,label)) - np.sum(np.multiply(phi_z,label))
+                    else:
+                        if (label==1):
+                            shap_map[(example_clustered == cluster_of_interest)[:,:,0]] += np.asscalar(phi_x) - np.asscalar(phi_z)
+                        else:
+                            shap_map[(example_clustered == cluster_of_interest)[:,:,0]] += np.asscalar(phi_z) - np.asscalar(phi_x)
+
+        return self.normalize_shap(shap_map/num_iterations)
