@@ -221,9 +221,11 @@ class ConvNetwork:
         return loss, validation_accuracy
 
     def normalize_shap(self,image):
-        if (np.max(image) != 0 and np.min(image) != 0):
-            image[image < 0] = (image[image < 0] - np.min(image[image < 0]))/(np.max(image[image < 0])-np.min(image[image < 0])) - 1
-            image[image > 0] = (image[image > 0] - np.min(image[image > 0]))/(np.max(image[image > 0])-np.min(image[image > 0]))
+        # if (np.max(image) != 0 and np.min(image) != 0):
+        #     print ("max ",np.max(image))
+        #     print ("min ",np.min(image))
+        image[image < 0] = (image[image < 0] - np.min(image[image < 0]))/(np.max(image[image < 0])-np.min(image[image < 0])) - 1
+        image[image > 0] = (image[image > 0] - np.min(image[image > 0]))/(np.max(image[image > 0])-np.min(image[image > 0]))
 
         return image
 
@@ -366,7 +368,7 @@ class ConvNetwork:
                         else:
                             shap_map[(example_clustered == cluster_of_interest)[:,:,0]] += np.asscalar(phi_z) - np.asscalar(phi_x)
 
-        return self.normalize_shap(shap_map/num_iterations)
+        return shap_map/num_iterations
 
     def grid_image(self,image,height,width):
         grid_height = ceil(height/10)
