@@ -85,3 +85,10 @@ Run the presentation notebook:
 ```python
 jupyter notebook presentation.ipynb
 ```
+
+To use the datasets included you must have git-lfs installed and execute the following three commands in your cloned repository:
+```python
+git lfs install
+git lfs fetch
+git lfs pull
+```
