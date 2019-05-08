@@ -28,7 +28,7 @@ class Dataset:
             print ("MNIST DATASET LOADED")
 
         elif (dataset_choice=="catsdogs"):
-            X = np.concatenate((np.load('../cats2.npy'), np.load('../dogs2.npy')),axis=0)
+            X = np.concatenate((np.load('data/cats.npy'), np.load('data/dogs.npy')),axis=0)
             y = np.concatenate((np.zeros((10000,1)),np.ones((10000,1))),axis=0)
             X,y = shuffle(X,y)
             self.X_train, self.X_valid, self.y_train, self.y_valid = train_test_split(X, y, test_size=0.2, random_state=42)
