@@ -29,7 +29,7 @@ class Dataset:
 
         elif (dataset_choice=="catsdogs"):
             X = np.concatenate((np.load('data/cats.npy'), np.load('data/dogs.npy')),axis=0)
-            y = np.concatenate((np.zeros((10000,1)),np.ones((10000,1))),axis=0)
+            y = np.concatenate((np.zeros((1000,1)),np.ones((1000,1))),axis=0)
             X,y = shuffle(X,y)
             self.X_train, self.X_valid, self.y_train, self.y_valid = train_test_split(X, y, test_size=0.2, random_state=42)
             print ("CATS AND DOGS DATASET LOADED")
