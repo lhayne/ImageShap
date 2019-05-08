@@ -75,5 +75,13 @@ python mnist_example.py
 The included cats_dogs_example.py file trains a simple convolutional network on a dataset of cats and dogs. The images are (100 x 100) and the dataset contains 20,000 images (10,000 from each class).
 Run the example:
 ```python
-python mnist.py
+python cats_dogs_example.py
+```
+
+*Presentation Notebook*
+
+The best way to visualize the shap maps is through Jupyter Notebook.
+Run the presentation notebook:
+```python
+jupyter notebook presentation.ipynb
 ```
